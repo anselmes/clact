@@ -1,0 +1,99 @@
+# TODO: #30 Linux Build Workflow
+name: Linux Build Workflow
+description: |
+  Build and publish Linux kernel or Ubuntu images using GitHub Actions.
+  This action builds a Linux kernel or Ubuntu image and optionally publishes it to a container registry.
+  It supports multi-architecture builds and can be customized for different targets.
+
+inputs:
+  target:
+    description: Target to build (kernel | ubuntu)
+    required: true
+  context:
+    description: Context directory for the build (default is current directory)
+    default: .
+    required: false
+  registry_url:
+    description: Container registry to push to (default is ghcr.io)
+    default: ghcr.io
+    required: false
+  registry_username:
+    description: Username for the container registry (default is GITHUB_ACTOR)
+    default: ${{ github.actor }}
+    required: false
+  registry_password:
+    description: Password for the container registry (default is GITHUB_TOKEN)
+    default: ${{ secrets.GITHUB_TOKEN }}
+    required: false
+  publish:
+    description: Whether to publish the artefact
+    default: "false"
+    required: false
+  arch:
+    description: Architecture to build for (e.g. amd64, arm64)
+    default: amd64
+    required: false
+  os:
+    description: Operating system to build for (e.g. linux, macos)
+    default: linux
+    required: false
+
+# TODO: #23 setup cosign
+runs:
+  using: composite
+  steps:
+    - id: prep
+      shell: bash
+      run: |
+        echo "##[group]Detected target: $TARGET"
+        echo "##[endgroup]"
+      env:
+        TARGET: ${{ inputs.target }}
+
+    - name: Build kernel
+      if: inputs.target == 'kernel'
+      shell: bash
+      run: echo "Building kernel for architecture..."
+
+    - name: Package kernel
+      if: inputs.target == 'kernel'
+      shell: bash
+      run: echo "Packaging kernel for architecture..."
+
+    - name: Test kernel
+      if: inputs.target == 'kernel'
+      shell: bash
+      run: echo "Testing kernel for architecture..."
+
+    - name: Publish kernel
+      if: inputs.target == 'kernel' && inputs.publish == 'true'
+      shell: bash
+      run: echo "Publishing kernel to registry $REGISTRY_URL"
+      env:
+        REGISTRY_URL: ${{ inputs.registry_url }}
+
+    - name: Build Ubuntu image
+      if: inputs.target == 'ubuntu'
+      shell: bash
+      run: echo "Building Ubuntu image for architecture...
+
+    - name: Test Ubuntu image
+      if: inputs.target == 'ubuntu'
+      shell: bash
+      run: echo "Testing Ubuntu image for architecture..."
+
+    - name: Publish Ubuntu image
+      if: inputs.target == 'ubuntu' && inputs.publish == 'true'
+      shell: bash
+      run: echo "Publishing Ubuntu image to registry $REGISTRY_URL"
+      env:
+        REGISTRY_URL: ${{ inputs.registry_url }}
+
+    - name: Attest Build Provenance
+      uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      with:
+        push-to-registry: true
+        subject-digest: ${{ steps.build.outputs.digest }}
+        subject-name: ${{ steps.build.outputs.metadata.image.name }}
+        # subject-path: ${{ inputs.dockerfile }}

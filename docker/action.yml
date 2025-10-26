@@ -1,0 +1,105 @@
+name: Container Build Workflow
+description: |
+  Build and push Docker images using GitHub Actions.
+  This action builds a Docker image and pushes it to a container registry.
+  It supports multi-platform builds and can generate SBOMs (Software Bill of Materials).
+
+inputs:
+  tag:
+    description: The tag name (e.g. v1.2.3, docker-foo)
+    required: true
+  build-args:
+    description: Build arguments for the Dockerfile
+    default: ""
+    required: false
+  dockerfile:
+    description: Path to the Dockerfile (default is Dockerfile)
+    default: Dockerfile
+    required: false
+  context:
+    description: Context directory for the build (default is current directory)
+    default: .
+    required: false
+  platforms:
+    description: Platforms to build for (default is linux/amd64,linux/arm64)
+    default: linux/amd64,linux/arm64
+    required: false
+  registry_url:
+    description: Container registry to push to (default is ghcr.io)
+    default: ghcr.io
+    required: false
+  registry_username:
+    description: Username for the container registry (default is GITHUB_ACTOR)
+    default: ${{ github.actor }}
+    required: false
+  registry_password:
+    description: Password for the container registry (default is GITHUB_TOKEN)
+    default: ${{ secrets.GITHUB_TOKEN }}
+    required: false
+  publish:
+    description: Whether to publish the artefact
+    default: "false"
+    required: false
+
+# TODO: #23 setup cosign
+runs:
+  using: composite
+  steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+    - name: Extract metadata (tags, labels) for Docker
+      uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
+      with:
+        images: ${{ inputs.registry_url }}/${{ inputs.registry_username }}/${{ inputs.tag }}
+        tags: |
+          type=ref,event=branch,prefix=branch-
+          type=ref,event=tag,prefix=tag-
+          type=sha
+        labels: |
+          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.source=${{ github.repository }}
+          org.opencontainers.image.url=${{ inputs.registry_url }}/${{ inputs.registry_username }}/${{ inputs.tag }}
+          org.opencontainers.image.version=${{ inputs.tag }}
+        annotations: |
+          org.opencontainers.image.authors=${{ github.actor }}
+          org.opencontainers.image.description=Build of ${{ inputs.target }} for ${{ inputs.os }} on ${{ inputs.arch }}
+          org.opencontainers.image.vendor=GitHub Actions
+
+    - name: Login to Container Registry
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      if: inputs.publish == 'true'
+      with:
+        registry: ${{ inputs.registry_url }}
+        username: ${{ inputs.registry_username }}
+        password: ${{ inputs.registry_password }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+      env:
+        CONTEXT: ${{ inputs.context }}
+      with:
+        annotations: ${{ steps.meta.outputs.annotations }}
+        buuld-args: ${{ inputs.build_args }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        context: $CONTEXT
+        file: ${{ inputs.dockerfile }}
+        labels: ${{ steps.meta.outputs.labels }}
+        platforms: ${{ inputs.platforms }}
+        push: ${{ inputs.publish == 'true' }}
+        sbom: true
+        tags: ${{ inputs.registry_url }}/${{ inputs.registry_username }}/${{ inputs.tag }}
+
+    - name: Attest Build Provenance
+      uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      with:
+        push-to-registry: true
+        subject-digest: ${{ steps.build.outputs.digest }}
+        subject-name: ${{ steps.build.outputs.metadata.image.name }}
+        # subject-path: ${{ inputs.dockerfile }}

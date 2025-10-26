@@ -1,0 +1,113 @@
+name: Helm Chart Build Workflow
+description: |
+  Build and publish Helm charts using GitHub Actions.
+  This action builds Helm charts and pushes them to a container registry.
+  It supports linting, installing, and packaging Helm charts.
+
+inputs:
+  context:
+    description: Context directory for the build (default is current directory)
+    default: .
+    required: false
+  registry_url:
+    description: Container registry to push to (default is ghcr.io)
+    default: ghcr.io
+    required: false
+  registry_username:
+    description: Username for the container registry (default is GITHUB_ACTOR)
+    default: ${{ github.actor }}
+    required: false
+  registry_password:
+    description: Password for the container registry (default is GITHUB_TOKEN)
+    default: ${{ secrets.GITHUB_TOKEN }}
+    required: false
+  publish:
+    description: Whether to publish the artefact
+    default: "false"
+    required: false
+
+# TODO: #23 setup cosign
+runs:
+  using: composite
+  steps:
+    - name: Set up Helm
+      uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
+      with:
+        version: v3.17.0
+
+    - name: Set up chart-testing
+      uses: helm/chart-testing-action@0d28d3144d3a25ea2cc349d6e59901c4ff469b3b # v2.7.0
+      with:
+        chart-dir: ${{ inputs.context }}
+
+    - name: Run chart-testing (list-changed)
+      id: list-changed
+      shell: bash
+      run: |
+        changed=$(ct list-changed --target-branch $BRANCH)
+        if [[ -n "$changed" ]]; then
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        fi
+      env:
+        BRANCH: ${{ github.event.repository.default_branch }}
+
+    - name: Run chart-testing (lint)
+      if: steps.list-changed.outputs.changed == 'true'
+      shell: bash
+      run: ct lint --target-branch $BRANCH
+      env:
+        BRANCH: ${{ github.event.repository.default_branch }}
+
+    - name: Create kind cluster
+      if: steps.list-changed.outputs.changed == 'true'
+      shell: bash
+      uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
+
+    - name: Run chart-testing (install)
+      if: steps.list-changed.outputs.changed == 'true'
+      shell: bash
+      run: ct install --target-branch $BRANCH
+      env:
+        BRANCH: ${{ github.event.repository.default_branch }}
+
+    - name: Package Helm chart
+      id: pack
+      if: steps.list-changed.outputs.changed == 'true' && inputs.publish == 'true'
+      shell: bash
+      run: |
+        echo "##[group]Packing Helm chart"
+        ct package --chart-dirs $CONTEXT --output-dir $WORKSPACE/charts
+        echo "##[endgroup]"
+        echo "packed_chart=$(ls $WORKSPACE/charts/*.tgz)" >> "$GITHUB_OUTPUT"
+      env:
+        CONTEXT: ${{ inputs.context }}
+        WORKSPACE: ${{ github.workspace }}
+
+    - name: Login to Container Registry
+      if: steps.list-changed.outputs.changed == 'true' && inputs.publish == 'true'
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      with:
+        registry: ${{ inputs.registry_url }}
+        username: ${{ inputs.registry_username }}
+        password: ${{ inputs.registry_password }}
+
+    - name: Publish Helm chart
+      if: steps.list-changed.outputs.changed == 'true' && inputs.publish == 'true'
+      shell: bash
+      run: |
+        echo "##[group]Pushing Helm chart"
+        helm push $CHART oci://$REGISTRY/$USERNAME
+        echo "##[endgroup]"
+      env:
+        CHART: ${{ steps.pack.outputs.packed_chart }}
+        REGISTRY: ${{ inputs.registry_url }}
+        USERNAME: ${{ inputs.registry_username }}
+
+    - name: Attest Build Provenance
+      uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      with:
+        push-to-registry: true
+        subject-digest: ${{ steps.build.outputs.digest }}
+        subject-name: ${{ steps.build.outputs.metadata.image.name }}
+        # subject-path: ${{ inputs.dockerfile }}
