@@ -1,0 +1,130 @@
+name: macOS signing setup
+description: >
+  Import the Developer ID certificate into an ephemeral keychain and decode
+  the App Store Connect API key for notarization. Exports KEYCHAIN_PATH,
+  APPLE_API_KEY_PATH, PREVIOUS_DEFAULT_KEYCHAIN, and PREVIOUS_KEYCHAINS via
+  GITHUB_ENV, and the same four values as step outputs (keychain-path,
+  api-key-path, previous-default-keychain, previous-keychains); pair with
+  macos/signing/cleanup, which accepts these as inputs or reads them from the
+  environment.
+
+inputs:
+  cert-p12-base64:
+    description: Base64-encoded Developer ID certificate (.p12)
+    required: true
+  cert-password:
+    description: Password for the .p12 certificate
+    required: true
+  api-key-p8-base64:
+    description: Base64-encoded App Store Connect API key (.p8)
+    required: true
+  keychain-timeout-seconds:
+    description: >
+      Lock timeout for the ephemeral keychain, in seconds. Defaults to 21600
+      (6 hours) to comfortably cover typical CI job runtimes; raise this for
+      longer-running workflows.
+    required: false
+    default: "21600"
+
+outputs:
+  keychain-path:
+    description: Path to the ephemeral keychain created for this job.
+    value: ${{ steps.setup.outputs.keychain-path }}
+  api-key-path:
+    description: Path to the decoded App Store Connect API key (.p8).
+    value: ${{ steps.setup.outputs.api-key-path }}
+  previous-default-keychain:
+    description: Default keychain that was active before setup ran.
+    value: ${{ steps.setup.outputs.previous-default-keychain }}
+  previous-keychains:
+    description: Newline-separated keychain search list that was active before setup ran.
+    value: ${{ steps.setup.outputs.previous-keychains }}
+
+runs:
+  using: composite
+  steps:
+    - id: setup
+      shell: bash
+      env:
+        APPLE_CERT_P12_BASE64: ${{ inputs.cert-p12-base64 }}
+        APPLE_CERT_PASSWORD: ${{ inputs.cert-password }}
+        APPLE_API_KEY_P8_BASE64: ${{ inputs.api-key-p8-base64 }}
+        KEYCHAIN_TIMEOUT_SECONDS: ${{ inputs.keychain-timeout-seconds }}
+      run: | # zizmor: ignore[github-env]
+        set -euo pipefail
+        if [[ "$(uname -s)" != "Darwin" ]]; then
+          echo "::error::macOS signing setup requires a macOS runner (uname reported '$(uname -s)')." >&2
+          exit 1
+        fi
+        if ! [[ "${KEYCHAIN_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]] || [[ "${KEYCHAIN_TIMEOUT_SECONDS}" -eq 0 ]]; then
+          echo "::error::keychain-timeout-seconds must be a positive integer (got '${KEYCHAIN_TIMEOUT_SECONDS}')." >&2
+          exit 1
+        fi
+        umask 077
+
+        strip_keychain_quotes() {
+          sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//'
+        }
+
+        write_var() {
+          local env_name="$1" output_name="$2"
+          shift 2
+          local delim
+          delim="GHADELIM_$(uuidgen)"
+          {
+            echo "${env_name}<<${delim}"
+            printf '%s\n' "$@"
+            echo "${delim}"
+          } >> "$GITHUB_ENV"
+          {
+            echo "${output_name}<<${delim}"
+            printf '%s\n' "$@"
+            echo "${delim}"
+          } >> "$GITHUB_OUTPUT"
+        }
+
+        KEYCHAIN_PATH=""
+        previous_default_keychain=""
+        existing_keychains=()
+
+        cleanup_on_exit() {
+          local exit_code=$?
+          rm -f "${RUNNER_TEMP}/cert.p12"
+          if [[ ${exit_code} -ne 0 ]]; then
+            rm -f "${RUNNER_TEMP}/AuthKey.p8"
+            if [[ "${#existing_keychains[@]}" -gt 0 ]]; then
+              security list-keychains -d user -s "${existing_keychains[@]}" 2>/dev/null || true
+            fi
+            [[ -n "${previous_default_keychain}" ]] && security default-keychain -s "${previous_default_keychain}" 2>/dev/null || true
+            [[ -n "${KEYCHAIN_PATH}" ]] && security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
+          fi
+          return 0
+        }
+        trap cleanup_on_exit EXIT
+
+        KEYCHAIN_PATH="${RUNNER_TEMP}/app-signing-$(uuidgen).keychain-db"
+        KEYCHAIN_PASSWORD="$(uuidgen)"
+        write_var KEYCHAIN_PATH keychain-path "${KEYCHAIN_PATH}"
+        security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+        security set-keychain-settings -lut "${KEYCHAIN_TIMEOUT_SECONDS}" "${KEYCHAIN_PATH}"
+        security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+        printf '%s' "${APPLE_CERT_P12_BASE64}" | base64 -D -o "${RUNNER_TEMP}/cert.p12"
+        security import "${RUNNER_TEMP}/cert.p12" -P "${APPLE_CERT_PASSWORD}" \
+          -f pkcs12 -k "${KEYCHAIN_PATH}" \
+          -T /usr/bin/codesign -T /usr/bin/productsign
+        security set-key-partition-list -S apple-tool:,apple:,codesign: \
+          -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+
+        previous_default_keychain="$(security default-keychain -d user | strip_keychain_quotes)"
+        write_var PREVIOUS_DEFAULT_KEYCHAIN previous-default-keychain "${previous_default_keychain}"
+
+        while IFS= read -r keychain; do
+          [[ -n "$keychain" ]] && existing_keychains+=("${keychain}")
+        done < <(security list-keychains -d user | strip_keychain_quotes)
+        write_var PREVIOUS_KEYCHAINS previous-keychains "${existing_keychains[@]}"
+
+        security list-keychains -d user -s "${KEYCHAIN_PATH}" "${existing_keychains[@]}"
+        security default-keychain -s "${KEYCHAIN_PATH}"
+
+        printf '%s' "${APPLE_API_KEY_P8_BASE64}" | base64 -D -o "${RUNNER_TEMP}/AuthKey.p8"
+        write_var APPLE_API_KEY_PATH api-key-path "${RUNNER_TEMP}/AuthKey.p8"
