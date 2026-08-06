@@ -1,10 +1,10 @@
 # Set to true to add reviewers to PRs
 addReviewers: true
 
-# Set to 'author' to add PR's author as a assignee
+# Set to 'author' to add the PR author as an assignee
 addAssignees: author
 
-# A list of reviewers to be added to PRs (GitHub user  name)
+# A list of reviewers to be added to PRs (GitHub username)
 reviewers:
   - sanselme
 
