@@ -1,0 +1,120 @@
+name: Container Build Workflow
+description: |
+  Build and push Docker images using GitHub Actions.
+  This action builds a Docker image and pushes it to a container registry.
+  It supports multi-platform builds, can generate SBOMs (Software Bill of Materials),
+  and keyless-signs published images with cosign.
+  Callers that set publish: true must grant the job `packages: write` (registry push)
+  and `id-token: write` (keyless cosign signing) permissions.
+
+inputs:
+  tag:
+    description: The tag name (e.g. v1.2.3, docker-foo)
+    required: true
+  build-args:
+    description: Build arguments for the Dockerfile
+    default: ""
+    required: false
+  dockerfile:
+    description: Path to the Dockerfile (default is Dockerfile)
+    default: Dockerfile
+    required: false
+  context:
+    description: Context directory for the build (default is current directory)
+    default: .
+    required: false
+  platforms:
+    description: Platforms to build for (default is linux/amd64,linux/arm64,linux/riscv64)
+    default: linux/amd64,linux/arm64,linux/riscv64
+    required: false
+  registry_url:
+    description: Container registry to push to (default is ghcr.io)
+    default: ghcr.io
+    required: false
+  registry_username:
+    description: Username for the container registry (default is GITHUB_ACTOR)
+    default: ${{ github.actor }}
+    required: false
+  registry_password:
+    description: Password for the container registry (default is GITHUB_TOKEN)
+    default: ${{ secrets.GITHUB_TOKEN }}
+    required: false
+  publish:
+    description: Whether to publish the artefact
+    default: "false"
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
+      with:
+        images: ${{ inputs.registry_url }}/${{ inputs.registry_username }}/${{ inputs.tag }}
+        tags: |
+          type=ref,event=branch,prefix=branch-
+          type=ref,event=tag,prefix=tag-
+          type=sha
+        labels: |
+          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.source=${{ github.repository }}
+          org.opencontainers.image.url=${{ inputs.registry_url }}/${{ inputs.registry_username }}/${{ inputs.tag }}
+          org.opencontainers.image.version=${{ inputs.tag }}
+        annotations: |
+          org.opencontainers.image.authors=${{ github.actor }}
+          org.opencontainers.image.source=${{ github.repository }}
+          org.opencontainers.image.vendor=GitHub Actions
+
+    - name: Login to Container Registry
+      uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+      if: inputs.publish == 'true'
+      with:
+        registry: ${{ inputs.registry_url }}
+        username: ${{ inputs.registry_username }}
+        password: ${{ inputs.registry_password }}
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+      env:
+        CONTEXT: ${{ inputs.context }}
+      with:
+        annotations: ${{ steps.meta.outputs.annotations }}
+        build-args: ${{ inputs.build-args }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        context: $CONTEXT
+        file: ${{ inputs.dockerfile }}
+        labels: ${{ steps.meta.outputs.labels }}
+        platforms: ${{ inputs.platforms }}
+        push: ${{ inputs.publish == 'true' }}
+        sbom: true
+        tags: ${{ steps.meta.outputs.tags }}
+
+    - name: Install cosign
+      if: inputs.publish == 'true'
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+    - name: Sign image with cosign
+      if: inputs.publish == 'true'
+      shell: bash
+      run: cosign sign --yes "${IMAGE}@${DIGEST}"
+      env:
+        IMAGE: ${{ inputs.registry_url }}/${{ inputs.registry_username }}/${{ inputs.tag }}
+        DIGEST: ${{ steps.build.outputs.digest }}
+
+    - name: Attest Build Provenance
+      uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && inputs.publish == 'true'
+      with:
+        push-to-registry: true
+        subject-digest: ${{ steps.build.outputs.digest }}
+        subject-name: ${{ inputs.registry_url }}/${{ inputs.registry_username }}/${{ inputs.tag }}
