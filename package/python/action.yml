@@ -1,0 +1,43 @@
+name: Python Package Build Workflow
+description: |
+  Build a standalone Python wheel with uv, so `pipx install`/`uv tool install`
+  puts an entry point on PATH without requiring the caller to activate a venv.
+
+inputs:
+  name:
+    description: Package name (used to clear stale wheels before building; PEP 503 hyphens are normalized to underscores)
+    required: true
+  context:
+    description: Directory containing the project (default is current directory)
+    default: .
+    required: false
+  wheel-dir:
+    description: Directory to write the wheel into, relative to context (default is hack)
+    default: ""
+    required: false
+
+outputs:
+  wheel-dir:
+    description: Directory the wheel was written into, relative to context
+    value: ${{ steps.build.outputs.wheel-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+    - name: Build wheel
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: |
+        set -euo pipefail
+        WHEEL_DIR="${WHEEL_DIR:-hack}"
+        mkdir -p "${WHEEL_DIR}"
+        rm -f "${WHEEL_DIR}/${NAME//-/_}"-*.whl
+        uv build --wheel -o "${WHEEL_DIR}"
+        echo "wheel-dir=${WHEEL_DIR}" >> "$GITHUB_OUTPUT"
+      env:
+        NAME: ${{ inputs.name }}
+        WHEEL_DIR: ${{ inputs.wheel-dir }}
