@@ -6,7 +6,7 @@ Description of the issue
 
 ## Solution
 
-Description of changes that solved the issue
+Description of the changes that solve the issue.
 
 ## Dependencies
 
