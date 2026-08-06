@@ -3,7 +3,7 @@ repo:
   - changed-files:
       - any-glob-to-any-file: "*"
 
-# Add 'github-actions' label to any changes in the '.github' directory
+# Add 'github-actions' label to changes in GitHub Actions-related files under the '.github' directory
 github-actions:
   - changed-files:
     - any-glob-to-any-file:
