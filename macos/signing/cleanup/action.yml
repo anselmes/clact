@@ -1,0 +1,89 @@
+name: macOS signing cleanup
+description: >
+  Delete the ephemeral keychain and notarization API key created by
+  macos/signing/setup, restoring the runner's previous default keychain and
+  keychain search list first. Reads KEYCHAIN_PATH, APPLE_API_KEY_PATH,
+  PREVIOUS_DEFAULT_KEYCHAIN, and PREVIOUS_KEYCHAINS from the environment (as
+  exported by macos/signing/setup in the same job) unless overridden via the
+  inputs below, which can also be wired directly from macos/signing/setup's
+  step outputs (keychain-path, api-key-path, previous-default-keychain,
+  previous-keychains) — set these explicitly if invoking this action outside
+  that same-job flow.
+
+inputs:
+  keychain-path:
+    description: >
+      Path to the ephemeral keychain to delete. Defaults to the KEYCHAIN_PATH
+      environment variable exported by macos/signing/setup.
+    required: false
+  api-key-path:
+    description: >
+      Path to the decoded App Store Connect API key to remove. Defaults to
+      the APPLE_API_KEY_PATH environment variable exported by
+      macos/signing/setup.
+    required: false
+  previous-default-keychain:
+    description: >
+      Default keychain to restore. Defaults to the PREVIOUS_DEFAULT_KEYCHAIN
+      environment variable exported by macos/signing/setup.
+    required: false
+  previous-keychains:
+    description: >
+      Newline-separated keychain search list to restore. Defaults to the
+      PREVIOUS_KEYCHAINS environment variable exported by macos/signing/setup.
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        INPUT_KEYCHAIN_PATH: ${{ inputs.keychain-path }}
+        INPUT_API_KEY_PATH: ${{ inputs.api-key-path }}
+        INPUT_PREVIOUS_DEFAULT_KEYCHAIN: ${{ inputs.previous-default-keychain }}
+        INPUT_PREVIOUS_KEYCHAINS: ${{ inputs.previous-keychains }}
+      run: |
+        set -euo pipefail
+        if [[ "$(uname -s)" != "Darwin" ]]; then
+          echo "::error::macOS signing cleanup requires a macOS runner (uname reported '$(uname -s)')." >&2
+          exit 1
+        fi
+
+        keychain_path="${INPUT_KEYCHAIN_PATH:-${KEYCHAIN_PATH:-}}"
+        api_key_path="${INPUT_API_KEY_PATH:-${APPLE_API_KEY_PATH:-}}"
+        previous_default_keychain="${INPUT_PREVIOUS_DEFAULT_KEYCHAIN:-${PREVIOUS_DEFAULT_KEYCHAIN:-}}"
+        previous_keychains_raw="${INPUT_PREVIOUS_KEYCHAINS:-${PREVIOUS_KEYCHAINS:-}}"
+
+        previous_keychains=()
+        if [[ -n "${previous_keychains_raw}" ]]; then
+          while IFS= read -r keychain; do
+            [[ -n "$keychain" ]] && previous_keychains+=("$keychain")
+          done <<< "${previous_keychains_raw}"
+        fi
+
+        failed=0
+
+        # A restore failure must not prevent the deletions below from running;
+        # each check below is an if-condition (exempt from set -e) rather than
+        # a bare command, so failures are recorded, not fatal.
+        if [[ "${#previous_keychains[@]}" -gt 0 ]] && ! security list-keychains -d user -s "${previous_keychains[@]}"; then
+          echo "::error::Failed to restore the previous keychain search list." >&2
+          failed=1
+        fi
+
+        if [[ -n "${previous_default_keychain}" ]] && ! security default-keychain -s "${previous_default_keychain}"; then
+          echo "::error::Failed to restore the previous default keychain." >&2
+          failed=1
+        fi
+
+        if [[ -n "${keychain_path}" ]] && ! security delete-keychain "${keychain_path}"; then
+          echo "::error::Failed to delete the ephemeral keychain at ${keychain_path}." >&2
+          failed=1
+        fi
+
+        if [[ -n "${api_key_path}" ]] && ! rm -f "${api_key_path}"; then
+          echo "::error::Failed to remove the API key file at ${api_key_path}." >&2
+          failed=1
+        fi
+
+        exit "${failed}"
