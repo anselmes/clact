@@ -102,7 +102,7 @@ runs:
         }
         trap cleanup_on_exit EXIT
 
-        KEYCHAIN_PATH="${RUNNER_TEMP}/app-signing.keychain-db"
+        KEYCHAIN_PATH="${RUNNER_TEMP}/app-signing-$(uuidgen).keychain-db"
         KEYCHAIN_PASSWORD="$(uuidgen)"
         write_var KEYCHAIN_PATH keychain-path "${KEYCHAIN_PATH}"
         security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
