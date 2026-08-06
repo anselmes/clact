@@ -4,42 +4,42 @@ repo:
       - any-glob-to-any-file: "*"
 
 # Add 'github-actions' label to changes in GitHub Actions-related files under the '.github' directory
-github-actions:
-  - changed-files:
-    - any-glob-to-any-file:
-      - .github/actions/*
-      - .github/actions/*/**
-      - .github/auto_assign.yml
-      - .github/auto_assign.yml/**
-      - .github/dependabot.yml
-      - .github/dependabot.yml/**
-      - .github/workflows/*
-      - .github/workflows/*/**
+# github-actions:
+#   - changed-files:
+#       - any-glob-to-any-file:
+#           - .github/actions/*
+#           - .github/actions/*/**
+#           - .github/auto_assign.yml
+#           - .github/auto_assign.yml/**
+#           - .github/dependabot.yml
+#           - .github/dependabot.yml/**
+#           - .github/workflows/*
+#           - .github/workflows/*/**
 
 # Add 'github-actions-build' label to any changes in the 'build' directory
 github-actions-build:
   - changed-files:
-    - any-glob-to-any-file:
-      - build/*
-      - build/*/**
+      - any-glob-to-any-file:
+          - build/*
+          - build/*/**
 
 # Add 'github-actions-docker' label to any changes in the 'docker' directory
 github-actions-docker:
   - changed-files:
-    - any-glob-to-any-file:
-      - docker/*
-      - docker/*/**
+      - any-glob-to-any-file:
+          - docker/*
+          - docker/*/**
 
 # Add 'github-actions-helm' label to any changes in the 'helm' directory
 github-actions-helm:
   - changed-files:
-    - any-glob-to-any-file:
-      - helm/*
-      - helm/*/**
+      - any-glob-to-any-file:
+          - helm/*
+          - helm/*/**
 
 # Add 'github-actions-linux' label to any changes in the 'linux' directory
 github-actions-linux:
   - changed-files:
-    - any-glob-to-any-file:
-      - linux/*
-      - linux/*/**
+      - any-glob-to-any-file:
+          - linux/*
+          - linux/*/**
