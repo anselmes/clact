@@ -23,23 +23,23 @@ github-actions-build:
           - build/*
           - build/*/**
 
-# Add 'github-actions-docker' label to any changes in the 'docker' directory
-github-actions-docker:
-  - changed-files:
-      - any-glob-to-any-file:
-          - docker/*
-          - docker/*/**
-
-# Add 'github-actions-helm' label to any changes in the 'helm' directory
-github-actions-helm:
-  - changed-files:
-      - any-glob-to-any-file:
-          - helm/*
-          - helm/*/**
-
 # Add 'github-actions-linux' label to any changes in the 'linux' directory
 github-actions-linux:
   - changed-files:
       - any-glob-to-any-file:
           - linux/*
           - linux/*/**
+
+# Add 'github-actions-package' label to any changes in the 'package' directory
+github-actions-package:
+  - changed-files:
+      - any-glob-to-any-file:
+          - package/*
+          - package/*/**
+
+# Add 'github-actions-macos' label to any changes in the 'macos' directory
+github-actions-macos:
+  - changed-files:
+      - any-glob-to-any-file:
+          - macos/*
+          - macos/*/**

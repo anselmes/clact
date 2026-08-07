@@ -3,6 +3,7 @@ description: |
   Build and publish Helm charts using GitHub Actions.
   This action builds Helm charts and pushes them to a container registry.
   It supports linting, installing, and packaging Helm charts.
+  Callers that set publish: true must grant the job `packages: write` permission.
 
 inputs:
   context:
@@ -60,7 +61,6 @@ runs:
 
     - name: Create kind cluster
       if: steps.list-changed.outputs.changed == 'true'
-      shell: bash
       uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
 
     - name: Run chart-testing (install)
@@ -92,11 +92,14 @@ runs:
         password: ${{ inputs.registry_password }}
 
     - name: Publish Helm chart
+      id: push
       if: steps.list-changed.outputs.changed == 'true' && inputs.publish == 'true'
       shell: bash
       run: |
         echo "##[group]Pushing Helm chart"
-        helm push $CHART oci://$REGISTRY/$USERNAME
+        output=$(helm push "$CHART" "oci://$REGISTRY/$USERNAME" 2>&1 | tee /dev/stderr)
+        echo "digest=$(echo "$output" | grep -oE 'sha256:[a-f0-9]+' | head -n1)" >> "$GITHUB_OUTPUT"
+        echo "ref=$(echo "$output" | grep -oE 'Pushed: .*' | sed 's/^Pushed: //')" >> "$GITHUB_OUTPUT"
         echo "##[endgroup]"
       env:
         CHART: ${{ steps.pack.outputs.packed_chart }}
@@ -105,9 +108,8 @@ runs:
 
     - name: Attest Build Provenance
       uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.list-changed.outputs.changed == 'true' && inputs.publish == 'true'
       with:
         push-to-registry: true
-        subject-digest: ${{ steps.build.outputs.digest }}
-        subject-name: ${{ steps.build.outputs.metadata.image.name }}
-        # subject-path: ${{ inputs.dockerfile }}
+        subject-digest: ${{ steps.push.outputs.digest }}
+        subject-name: ${{ steps.push.outputs.ref }}

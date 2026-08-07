@@ -1,0 +1,281 @@
+name: Binary Build Workflow
+description: |
+  Compile a Go, Rust, or Swift binary and package it as a macOS installer
+  (.pkg). Reads the version to stamp from <context>/.claude-plugin/plugin.json.
+  Signs with a Developer ID certificate and notarizes when developer-name/
+  developer-id/apple-api-key-* inputs are provided; otherwise falls back to an
+  ad-hoc signed, non-notarized build. Pair with anselmes/clact/macos/signing/setup
+  (and .../cleanup) to provide the certificate/key material — this action does
+  not import or manage keychains itself. Requires a macOS runner and jq.
+
+inputs:
+  target:
+    description: Language toolchain to build with (go | rust | swift)
+    required: true
+  name:
+    description: Binary/package name
+    required: true
+  identifier:
+    description: Reverse-DNS package identifier for pkgbuild (e.g. com.example.mytool)
+    required: true
+  context:
+    description: Directory containing the project (default is current directory)
+    default: .
+    required: false
+  arch:
+    description: >
+      Architecture to build for. Valid values depend on target:
+      go: arm64 | amd64 (unset builds the runner's native arch);
+      rust: aarch64 | x86_64 (unset builds the runner's native arch);
+      swift: arm64 | x86_64 | universal (unset builds the runner's native arch).
+    default: ""
+    required: false
+  go-package:
+    description: Package path to build (go target only)
+    default: ./pkg/cmd
+    required: false
+  version-symbol:
+    description: >
+      Go symbol path to stamp with the plugin version via -ldflags -X (go target
+      only, e.g. mymodule/pkg.version). Skipped when empty.
+    default: ""
+    required: false
+  installer-output:
+    description: >
+      Path to the output .pkg, relative to context (default is
+      hack/<name>-installer.pkg; an -unsigned suffix is inserted automatically
+      when no Developer ID is configured).
+    default: ""
+    required: false
+  developer-name:
+    description: Developer ID identity name for codesign/pkgbuild/productbuild (unset builds ad-hoc signed only)
+    default: ""
+    required: false
+  developer-id:
+    description: Developer ID team/account identifier
+    default: ""
+    required: false
+  apple-api-key-id:
+    description: App Store Connect API key ID, for notarization
+    default: ""
+    required: false
+  apple-api-issuer-id:
+    description: App Store Connect API issuer ID, for notarization
+    default: ""
+    required: false
+  apple-api-key-path:
+    description: Path to the decoded App Store Connect API key (.p8), for notarization
+    default: ""
+    required: false
+
+outputs:
+  installer-path:
+    description: Path to the produced .pkg, relative to context
+    value: ${{ steps.validate.outputs.installer-output }}
+  signed:
+    description: Whether the installer was signed with a Developer ID certificate
+    value: ${{ steps.validate.outputs.signed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      id: validate
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ ! "${NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::Invalid name '${NAME}' (expected only A-Z, a-z, 0-9, '.', '_' or '-')" >&2
+          exit 1
+        fi
+
+        case "${TARGET}" in
+        go) case "${ARCH}" in "" | arm64 | amd64) ;; *)
+          echo "::error::Invalid arch '${ARCH}' for go (expected arm64, amd64, or unset)" >&2
+          exit 1
+          ;;
+        esac ;;
+        rust) case "${ARCH}" in "" | aarch64 | x86_64) ;; *)
+          echo "::error::Invalid arch '${ARCH}' for rust (expected aarch64, x86_64, or unset)" >&2
+          exit 1
+          ;;
+        esac ;;
+        swift) case "${ARCH}" in "" | arm64 | x86_64 | universal) ;; *)
+          echo "::error::Invalid arch '${ARCH}' for swift (expected arm64, x86_64, universal, or unset)" >&2
+          exit 1
+          ;;
+        esac ;;
+        *)
+          echo "::error::Invalid target '${TARGET}' (expected go, rust, or swift)" >&2
+          exit 1
+          ;;
+        esac
+
+        if [[ -n "${DEVELOPER_NAME}" && -n "${DEVELOPER_ID}" ]]; then
+          SIGNED=true
+        else
+          SIGNED=false
+          echo "developer-name/developer-id not set — building an unsigned installer with ad-hoc code signing" >&2
+        fi
+
+        INSTALLER_OUTPUT="${INSTALLER_OUTPUT:-hack/${NAME}-installer.pkg}"
+        if [[ "${SIGNED}" == false ]]; then
+          INSTALLER_OUTPUT="${INSTALLER_OUTPUT%.pkg}-unsigned.pkg"
+        fi
+
+        echo "signed=${SIGNED}" >> "$GITHUB_OUTPUT"
+        echo "installer-output=${INSTALLER_OUTPUT}" >> "$GITHUB_OUTPUT"
+      env:
+        NAME: ${{ inputs.name }}
+        TARGET: ${{ inputs.target }}
+        ARCH: ${{ inputs.arch }}
+        DEVELOPER_NAME: ${{ inputs.developer-name }}
+        DEVELOPER_ID: ${{ inputs.developer-id }}
+        INSTALLER_OUTPUT: ${{ inputs.installer-output }}
+
+    - name: Setup Swift
+      if: inputs.target == 'swift'
+      uses: swift-actions/setup-swift@682457186b71c25a884c45c06f859febbe259240 # 2.3.0
+
+    - name: Setup Rust
+      if: inputs.target == 'rust'
+      uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1.13.0
+      with:
+        cache: true
+
+    - name: Setup Go
+      if: inputs.target == 'go'
+      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      with:
+        cache: true
+
+    - name: Read plugin version
+      id: version
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: |
+        set -euo pipefail
+        v="$(jq -r .version .claude-plugin/plugin.json)"
+        if [[ -z "$v" || "$v" == "null" ]]; then
+          echo "::error::Missing/invalid .version in .claude-plugin/plugin.json" >&2
+          exit 1
+        fi
+        echo "version=$v" >> "$GITHUB_OUTPUT"
+
+    - name: Build binary
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: |
+        set -euo pipefail
+        PKG_STAGE="$(mktemp -d)"
+        mkdir -p "${PKG_STAGE}/pkgroot/usr/local/bin"
+
+        case "${TARGET}" in
+        go)
+          declare -a build_env=(GOOS=darwin CGO_ENABLED=0)
+          case "${ARCH}" in arm64 | amd64) build_env+=(GOARCH="${ARCH}") ;; "") ;; esac
+          declare -a ldflags=()
+          [[ -n "${VERSION_SYMBOL}" ]] && ldflags+=(-ldflags "-X ${VERSION_SYMBOL}=${VERSION}")
+          env "${build_env[@]}" go build "${ldflags[@]}" -o "${PKG_STAGE}/pkgroot/usr/local/bin/${NAME}" "${GO_PACKAGE}"
+          ;;
+        rust)
+          declare -a target_flags=()
+          bin_subdir=release
+          case "${ARCH}" in
+          aarch64) target_flags=(--target aarch64-apple-darwin); bin_subdir=aarch64-apple-darwin/release ;;
+          x86_64) target_flags=(--target x86_64-apple-darwin); bin_subdir=x86_64-apple-darwin/release ;;
+          "") ;;
+          esac
+          VERSION="${VERSION}" cargo build --release "${target_flags[@]}"
+          cp "target/${bin_subdir}/${NAME}" "${PKG_STAGE}/pkgroot/usr/local/bin/"
+          ;;
+        swift)
+          declare -a arch_flags=()
+          case "${ARCH}" in
+          universal) arch_flags=(--arch arm64 --arch x86_64) ;;
+          arm64) arch_flags=(--arch arm64) ;;
+          x86_64) arch_flags=(--arch x86_64) ;;
+          "") ;;
+          esac
+          swift build --configuration release "${arch_flags[@]}"
+          bin_path="$(swift build --configuration release "${arch_flags[@]}" --show-bin-path)"
+          cp "${bin_path}/${NAME}" "${PKG_STAGE}/pkgroot/usr/local/bin/"
+          ;;
+        esac
+
+        strip -x "${PKG_STAGE}/pkgroot/usr/local/bin/${NAME}"
+        echo "pkg-stage=${PKG_STAGE}" >> "$GITHUB_OUTPUT"
+      env:
+        TARGET: ${{ inputs.target }}
+        NAME: ${{ inputs.name }}
+        ARCH: ${{ inputs.arch }}
+        GO_PACKAGE: ${{ inputs.go-package }}
+        VERSION_SYMBOL: ${{ inputs.version-symbol }}
+        VERSION: ${{ steps.version.outputs.version }}
+
+    - name: Sign binary
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${SIGNED}" == true ]]; then
+          codesign --options runtime --sign "Developer ID Application: ${DEVELOPER_NAME} (${DEVELOPER_ID})" "${BINARY}"
+        else
+          codesign --options runtime --sign - "${BINARY}"
+        fi
+        codesign -dv "${BINARY}"
+      env:
+        SIGNED: ${{ steps.validate.outputs.signed }}
+        DEVELOPER_NAME: ${{ inputs.developer-name }}
+        DEVELOPER_ID: ${{ inputs.developer-id }}
+        BINARY: ${{ steps.build.outputs.pkg-stage }}/pkgroot/usr/local/bin/${{ inputs.name }}
+
+    - name: Build installer package
+      id: pkgbuild
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: |
+        set -euo pipefail
+        pkgbuild_args=(
+          --identifier "${IDENTIFIER}"
+          --install-location /
+          --root "${PKG_STAGE}/pkgroot"
+          --version "${VERSION}"
+        )
+        [[ "${SIGNED}" == true ]] && pkgbuild_args+=(--sign "Developer ID Installer: ${DEVELOPER_NAME} (${DEVELOPER_ID})")
+        pkgbuild "${pkgbuild_args[@]}" "${PKG_STAGE}/${NAME}-component.pkg"
+
+        productbuild --synthesize --package "${PKG_STAGE}/${NAME}-component.pkg" "${PKG_STAGE}/Distribution.xml"
+
+        mkdir -p "${PWD}/$(dirname "${INSTALLER_OUTPUT}")"
+        rm -f "${PWD}/${INSTALLER_OUTPUT}"
+        productbuild_args=(--distribution "${PKG_STAGE}/Distribution.xml" --package-path "${PKG_STAGE}/")
+        [[ "${SIGNED}" == true ]] && productbuild_args+=(--sign "Developer ID Installer: ${DEVELOPER_NAME} (${DEVELOPER_ID})")
+        productbuild "${productbuild_args[@]}" "${PWD}/${INSTALLER_OUTPUT}"
+      env:
+        NAME: ${{ inputs.name }}
+        IDENTIFIER: ${{ inputs.identifier }}
+        VERSION: ${{ steps.version.outputs.version }}
+        SIGNED: ${{ steps.validate.outputs.signed }}
+        DEVELOPER_NAME: ${{ inputs.developer-name }}
+        DEVELOPER_ID: ${{ inputs.developer-id }}
+        PKG_STAGE: ${{ steps.build.outputs.pkg-stage }}
+        INSTALLER_OUTPUT: ${{ steps.validate.outputs.installer-output }}
+
+    - name: Notarize installer
+      if: steps.validate.outputs.signed == 'true' && inputs.apple-api-key-id != '' && inputs.apple-api-issuer-id != '' && inputs.apple-api-key-path != ''
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: |
+        set -euo pipefail
+        xcrun notarytool submit "${PWD}/${INSTALLER_OUTPUT}" \
+          --key "${APPLE_API_KEY_PATH}" \
+          --key-id "${APPLE_API_KEY_ID}" \
+          --issuer "${APPLE_API_ISSUER_ID}" \
+          --wait
+        xcrun stapler staple "${PWD}/${INSTALLER_OUTPUT}"
+      env:
+        INSTALLER_OUTPUT: ${{ steps.validate.outputs.installer-output }}
+        APPLE_API_KEY_PATH: ${{ inputs.apple-api-key-path }}
+        APPLE_API_KEY_ID: ${{ inputs.apple-api-key-id }}
+        APPLE_API_ISSUER_ID: ${{ inputs.apple-api-issuer-id }}

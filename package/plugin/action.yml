@@ -1,0 +1,104 @@
+name: Claude Plugin Bundle
+description: |
+  Validate a Claude Code plugin manifest and stage its distributable content
+  (config, hooks, tools, skills, agents, docs — no compiled binary) into a
+  .plugin zip archive, plus an unzipped copy for marketplace/Pages hosting.
+  Requires npm (for the Claude Code CLI) and jq on the runner.
+
+inputs:
+  name:
+    description: Plugin name (also used as the archive/dist directory name)
+    required: true
+  context:
+    description: Directory containing the plugin (.claude-plugin/plugin.json etc.)
+    default: .
+    required: false
+  version:
+    description: Version to write into plugin.json before staging (skipped when empty)
+    default: ""
+    required: false
+  output:
+    description: Path to the output .plugin zip, relative to context (default is hack/<name>.plugin)
+    default: ""
+    required: false
+  dist-dir:
+    description: Directory to copy the unzipped, staged plugin content into, relative to context
+    default: ../dist
+    required: false
+  paths:
+    description: Space-separated list of files/directories (relative to context) to include in the bundle
+    default: .mcp.json README.md LICENSE hooks ../tools skills agents
+    required: false
+
+outputs:
+  plugin-path:
+    description: Path to the produced .plugin zip, relative to context
+    value: ${{ steps.stage.outputs.plugin-path }}
+  dist-path:
+    description: Path to the unzipped, staged plugin content, relative to context
+    value: ${{ steps.stage.outputs.dist-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Claude Code CLI
+      shell: bash
+      run: npm install -g @anthropic-ai/claude-code # zizmor: ignore[adhoc-packages]
+
+    - name: Validate plugin name
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ ! "${NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::Invalid name '${NAME}' (expected only A-Z, a-z, 0-9, '.', '_' or '-')" >&2
+          exit 1
+        fi
+      env:
+        NAME: ${{ inputs.name }}
+
+    - name: Bump plugin manifest version
+      if: inputs.version != ''
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: |
+        set -euo pipefail
+        jq --arg v "${VERSION}" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json.$$
+        mv /tmp/plugin.json.$$ .claude-plugin/plugin.json
+      env:
+        VERSION: ${{ inputs.version }}
+
+    - name: Validate plugin manifest
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: claude plugin validate .claude-plugin/plugin.json
+
+    - name: Stage and package plugin bundle
+      id: stage
+      shell: bash
+      working-directory: ${{ inputs.context }}
+      run: |
+        set -euo pipefail
+        OUTPUT="${OUTPUT:-hack/${NAME}.plugin}"
+        SRC="${PWD}"
+
+        STAGE="$(mktemp -d)"
+        cp -R -- ${PATHS} "${STAGE}/"
+        mkdir "${STAGE}/.claude-plugin"
+        cp .claude-plugin/plugin.json "${STAGE}/.claude-plugin/"
+        find "${STAGE}" -name .DS_Store -delete
+
+        mkdir -p "${SRC}/$(dirname "${OUTPUT}")"
+        rm -f "${SRC}/${OUTPUT}"
+        rm -rf "${DIST_DIR:?}/${NAME:?}"
+        mkdir -p "${DIST_DIR}"
+        cp -R "${STAGE}" "${DIST_DIR}/${NAME}"
+        (cd "${STAGE}" && zip -r "${SRC}/${OUTPUT}" .)
+        rm -rf "${STAGE}"
+
+        echo "plugin-path=${OUTPUT}" >> "$GITHUB_OUTPUT"
+        echo "dist-path=${DIST_DIR}/${NAME}" >> "$GITHUB_OUTPUT"
+      env:
+        NAME: ${{ inputs.name }}
+        OUTPUT: ${{ inputs.output }}
+        DIST_DIR: ${{ inputs.dist-dir }}
+        PATHS: ${{ inputs.paths }}
