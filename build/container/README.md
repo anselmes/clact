@@ -25,7 +25,7 @@ cosign.
 | `registry_url`      | Container registry to push to              | no       | `ghcr.io`                               |
 | `registry_username` | Username for the container registry        | no       | `${{ github.actor }}`                   |
 | `registry_password` | Password for the container registry        | no       | `${{ secrets.GITHUB_TOKEN }}`           |
-| `publish`           | Whether to publish the artefact            | no       | `false`                                 |
+| `publish`           | Whether to publish the artifact            | no       | `false`                                 |
 
 ## Notes
 
