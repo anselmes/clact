@@ -58,6 +58,7 @@ jobs:
   trivy:
     uses: anselmes/cicd/.github/workflows/trivy.yml@v0.3.4
     permissions:
+      actions: read
       contents: write
       id-token: write
       security-events: write
