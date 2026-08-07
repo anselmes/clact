@@ -15,7 +15,6 @@ repos:
       - id: trailing-whitespace # Removes trailing whitespace from lines
         args: [--markdown-linebreak-ext=md]
 
-
   # gh actions-lock - Workflow Dependency Pinning
   # Offline check that every action ref in .github/workflows/ has a matching
   # entry in .github/workflows/actions.lock, catching lockfile drift locally
