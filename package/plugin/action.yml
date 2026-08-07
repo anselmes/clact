@@ -82,8 +82,7 @@ runs:
         SRC="${PWD}"
 
         STAGE="$(mktemp -d)"
-        # shellcheck disable=SC2086
-        cp -R ${PATHS} "${STAGE}/"
+        cp -R -- ${PATHS} "${STAGE}/"
         mkdir "${STAGE}/.claude-plugin"
         cp .claude-plugin/plugin.json "${STAGE}/.claude-plugin/"
         find "${STAGE}" -name .DS_Store -delete
