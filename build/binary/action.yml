@@ -153,7 +153,14 @@ runs:
       id: version
       shell: bash
       working-directory: ${{ inputs.context }}
-      run: echo "version=$(jq -r .version .claude-plugin/plugin.json)" >> "$GITHUB_OUTPUT"
+      run: |
+        set -euo pipefail
+        v="$(jq -r .version .claude-plugin/plugin.json)"
+        if [[ -z "$v" || "$v" == "null" ]]; then
+          echo "::error::Missing/invalid .version in .claude-plugin/plugin.json" >&2
+          exit 1
+        fi
+        echo "version=$v" >> "$GITHUB_OUTPUT"
 
     - name: Build binary
       id: build
