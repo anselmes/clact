@@ -13,6 +13,7 @@ repos:
     hooks:
       - id: end-of-file-fixer # Ensures files end with a newline
       - id: trailing-whitespace # Removes trailing whitespace from lines
+        args: [--markdown-linebreak-ext=md]
 
 
   # gh actions-lock - Workflow Dependency Pinning
