@@ -2,7 +2,7 @@
 
 Validate a Claude Code plugin manifest and stage its distributable content
 (config, hooks, tools, skills, agents, docs — no compiled binary) into a
-`.plugin` zip archive, plus an unzipped copy for marketplace/Pages hosting.
+`.plugin` ZIP archive, plus an unzipped copy for marketplace/Pages hosting.
 Requires `npm` (for the Claude Code CLI) and `jq` on the runner.
 
 ## Usage
@@ -20,7 +20,7 @@ Requires `npm` (for the Claude Code CLI) and `jq` on the runner.
 | `name`     | Plugin name (also used as the archive/dist directory name); must match `^[A-Za-z0-9._-]+$` | yes      |                                                            |
 | `context`  | Directory containing the plugin (`.claude-plugin/plugin.json` etc.)                        | no       | `.`                                                        |
 | `version`  | Version to write into `plugin.json` before staging (skipped when empty)                    | no       | `""`                                                       |
-| `output`   | Path to the output `.plugin` zip, relative to context                                      | no       | `hack/<name>.plugin`                                       |
+| `output`   | Path to the output `.plugin` ZIP, relative to context                                      | no       | `hack/<name>.plugin`                                       |
 | `dist-dir` | Directory to copy the unzipped, staged plugin content into, relative to context            | no       | `../dist`                                                  |
 | `paths`    | Space-separated list of files/directories (relative to context) to include in the bundle   | no       | `.mcp.json README.md LICENSE hooks ../tools skills agents` |
 
@@ -28,7 +28,7 @@ Requires `npm` (for the Claude Code CLI) and `jq` on the runner.
 
 | Name          | Description                                                      |
 | ------------- | ---------------------------------------------------------------- |
-| `plugin-path` | Path to the produced `.plugin` zip, relative to context          |
+| `plugin-path` | Path to the produced `.plugin` ZIP, relative to context          |
 | `dist-path`   | Path to the unzipped, staged plugin content, relative to context |
 
 ## Notes

@@ -5,4 +5,14 @@
 rules:
   unpinned-uses:
     ignore:
+      - bot.yml
+      - build.yml
+      - chart.yml
       - ci.yml
+      - cleanup.yml
+      - container.yml
+      - package.yml
+      - plugin.yml
+      - review.yml
+      - scorecard.yml
+      - trivy.yml
