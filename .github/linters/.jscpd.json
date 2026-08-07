@@ -2,11 +2,12 @@
   "threshold": 15,
   "ignore": [
     "**/__tests__/**",
-    "**/*.test.*",
-    "**/*.spec.*",
-    "**/node_modules/**",
-    "**/dist/**",
+    "**/.github/workflows/**",
     "**/*.md",
-    "**/*.txt"
+    "**/*.spec.*",
+    "**/*.test.*",
+    "**/*.txt",
+    "**/dist/**",
+    "**/node_modules/**"
   ]
 }
