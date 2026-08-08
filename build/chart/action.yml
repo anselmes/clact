@@ -28,7 +28,6 @@ inputs:
     default: "false"
     required: false
 
-# TODO: setup cosign
 runs:
   using: composite
   steps:
@@ -106,6 +105,18 @@ runs:
         echo "digest=$(echo "$output" | grep -oE 'sha256:[a-f0-9]+' | head -n1)" >> "$GITHUB_OUTPUT"
         echo "ref=$(echo "$output" | grep -oE 'Pushed: .*' | sed 's/^Pushed: //')" >> "$GITHUB_OUTPUT"
         echo "##[endgroup]"
+
+    - name: Install cosign
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      if: inputs.publish == 'true'
+
+    - name: Sign chart with cosign
+      if: steps.list-changed.outputs.changed == 'true' && inputs.publish == 'true'
+      shell: bash
+      env:
+        DIGEST: ${{ steps.push.outputs.digest }}
+        REF: ${{ steps.push.outputs.ref }}
+      run: cosign sign --yes "${REF%:*}@${DIGEST}"
 
     - name: Attest Build Provenance
       uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
