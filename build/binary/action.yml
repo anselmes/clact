@@ -30,6 +30,13 @@ inputs:
       swift: arm64 | x86_64 | universal (unset builds the runner's native arch).
     default: ""
     required: false
+  swift-version:
+    description: >
+      Swift version to install (swift target only, e.g. 6.3.3, main-snapshot).
+      Passed straight through to swift-actions/setup-swift's swift-version input,
+      which resolves it via Swiftly. Unset installs Swiftly's "latest".
+    default: ""
+    required: false
   go-package:
     description: Package path to build (go target only)
     default: ./pkg/cmd
@@ -134,8 +141,10 @@ runs:
         echo "installer-output=${INSTALLER_OUTPUT}" >> "$GITHUB_OUTPUT"
 
     - name: Setup Swift
-      uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
+      uses: swift-actions/setup-swift@364295d9c23900ce04d4e5cc708387921b4e50f9 # v3.0.0-beta.1
       if: inputs.target == 'swift'
+      with:
+        swift-version: ${{ inputs['swift-version'] || 'latest' }}
 
     - name: Setup Rust
       uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1.13.0
