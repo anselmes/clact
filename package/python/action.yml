@@ -31,6 +31,9 @@ runs:
       id: build
       shell: bash
       working-directory: ${{ inputs.context }}
+      env:
+        NAME: ${{ inputs.name }}
+        WHEEL_DIR: ${{ inputs.wheel-dir }}
       run: |
         set -euo pipefail
         WHEEL_DIR="${WHEEL_DIR:-hack}"
@@ -38,6 +41,3 @@ runs:
         rm -f "${WHEEL_DIR}/${NAME//-/_}"-*.whl
         uv build --wheel -o "${WHEEL_DIR}"
         echo "wheel-dir=${WHEEL_DIR}" >> "$GITHUB_OUTPUT"
-      env:
-        NAME: ${{ inputs.name }}
-        WHEEL_DIR: ${{ inputs.wheel-dir }}

@@ -82,6 +82,13 @@ runs:
     - name: Validate inputs
       id: validate
       shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+        DEVELOPER_ID: ${{ inputs.developer-id }}
+        DEVELOPER_NAME: ${{ inputs.developer-name }}
+        INSTALLER_OUTPUT: ${{ inputs.installer-output }}
+        NAME: ${{ inputs.name }}
+        TARGET: ${{ inputs.target }}
       run: |
         set -euo pipefail
         if [[ ! "${NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -125,27 +132,20 @@ runs:
 
         echo "signed=${SIGNED}" >> "$GITHUB_OUTPUT"
         echo "installer-output=${INSTALLER_OUTPUT}" >> "$GITHUB_OUTPUT"
-      env:
-        NAME: ${{ inputs.name }}
-        TARGET: ${{ inputs.target }}
-        ARCH: ${{ inputs.arch }}
-        DEVELOPER_NAME: ${{ inputs.developer-name }}
-        DEVELOPER_ID: ${{ inputs.developer-id }}
-        INSTALLER_OUTPUT: ${{ inputs.installer-output }}
 
     - name: Setup Swift
-      if: inputs.target == 'swift'
       uses: swift-actions/setup-swift@682457186b71c25a884c45c06f859febbe259240 # 2.3.0
+      if: inputs.target == 'swift'
 
     - name: Setup Rust
-      if: inputs.target == 'rust'
       uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1.13.0
+      if: inputs.target == 'rust'
       with:
         cache: true
 
     - name: Setup Go
-      if: inputs.target == 'go'
       uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      if: inputs.target == 'go'
       with:
         cache: true
 
@@ -166,6 +166,13 @@ runs:
       id: build
       shell: bash
       working-directory: ${{ inputs.context }}
+      env:
+        ARCH: ${{ inputs.arch }}
+        GO_PACKAGE: ${{ inputs.go-package }}
+        NAME: ${{ inputs.name }}
+        TARGET: ${{ inputs.target }}
+        VERSION_SYMBOL: ${{ inputs.version-symbol }}
+        VERSION: ${{ steps.version.outputs.version }}
       run: |
         set -euo pipefail
         PKG_STAGE="$(mktemp -d)"
@@ -206,16 +213,14 @@ runs:
 
         strip -x "${PKG_STAGE}/pkgroot/usr/local/bin/${NAME}"
         echo "pkg-stage=${PKG_STAGE}" >> "$GITHUB_OUTPUT"
-      env:
-        TARGET: ${{ inputs.target }}
-        NAME: ${{ inputs.name }}
-        ARCH: ${{ inputs.arch }}
-        GO_PACKAGE: ${{ inputs.go-package }}
-        VERSION_SYMBOL: ${{ inputs.version-symbol }}
-        VERSION: ${{ steps.version.outputs.version }}
 
     - name: Sign binary
       shell: bash
+      env:
+        BINARY: ${{ steps.build.outputs.pkg-stage }}/pkgroot/usr/local/bin/${{ inputs.name }}
+        DEVELOPER_ID: ${{ inputs.developer-id }}
+        DEVELOPER_NAME: ${{ inputs.developer-name }}
+        SIGNED: ${{ steps.validate.outputs.signed }}
       run: |
         set -euo pipefail
         if [[ "${SIGNED}" == true ]]; then
@@ -224,16 +229,20 @@ runs:
           codesign --options runtime --sign - "${BINARY}"
         fi
         codesign -dv "${BINARY}"
-      env:
-        SIGNED: ${{ steps.validate.outputs.signed }}
-        DEVELOPER_NAME: ${{ inputs.developer-name }}
-        DEVELOPER_ID: ${{ inputs.developer-id }}
-        BINARY: ${{ steps.build.outputs.pkg-stage }}/pkgroot/usr/local/bin/${{ inputs.name }}
 
     - name: Build installer package
       id: pkgbuild
       shell: bash
       working-directory: ${{ inputs.context }}
+      env:
+        DEVELOPER_ID: ${{ inputs.developer-id }}
+        DEVELOPER_NAME: ${{ inputs.developer-name }}
+        IDENTIFIER: ${{ inputs.identifier }}
+        INSTALLER_OUTPUT: ${{ steps.validate.outputs.installer-output }}
+        NAME: ${{ inputs.name }}
+        PKG_STAGE: ${{ steps.build.outputs.pkg-stage }}
+        SIGNED: ${{ steps.validate.outputs.signed }}
+        VERSION: ${{ steps.version.outputs.version }}
       run: |
         set -euo pipefail
         pkgbuild_args=(
@@ -252,20 +261,16 @@ runs:
         productbuild_args=(--distribution "${PKG_STAGE}/Distribution.xml" --package-path "${PKG_STAGE}/")
         [[ "${SIGNED}" == true ]] && productbuild_args+=(--sign "Developer ID Installer: ${DEVELOPER_NAME} (${DEVELOPER_ID})")
         productbuild "${productbuild_args[@]}" "${PWD}/${INSTALLER_OUTPUT}"
-      env:
-        NAME: ${{ inputs.name }}
-        IDENTIFIER: ${{ inputs.identifier }}
-        VERSION: ${{ steps.version.outputs.version }}
-        SIGNED: ${{ steps.validate.outputs.signed }}
-        DEVELOPER_NAME: ${{ inputs.developer-name }}
-        DEVELOPER_ID: ${{ inputs.developer-id }}
-        PKG_STAGE: ${{ steps.build.outputs.pkg-stage }}
-        INSTALLER_OUTPUT: ${{ steps.validate.outputs.installer-output }}
 
     - name: Notarize installer
       if: steps.validate.outputs.signed == 'true' && inputs.apple-api-key-id != '' && inputs.apple-api-issuer-id != '' && inputs.apple-api-key-path != ''
       shell: bash
       working-directory: ${{ inputs.context }}
+      env:
+        APPLE_API_ISSUER_ID: ${{ inputs.apple-api-issuer-id }}
+        APPLE_API_KEY_ID: ${{ inputs.apple-api-key-id }}
+        APPLE_API_KEY_PATH: ${{ inputs.apple-api-key-path }}
+        INSTALLER_OUTPUT: ${{ steps.validate.outputs.installer-output }}
       run: |
         set -euo pipefail
         xcrun notarytool submit "${PWD}/${INSTALLER_OUTPUT}" \
@@ -274,8 +279,3 @@ runs:
           --issuer "${APPLE_API_ISSUER_ID}" \
           --wait
         xcrun stapler staple "${PWD}/${INSTALLER_OUTPUT}"
-      env:
-        INSTALLER_OUTPUT: ${{ steps.validate.outputs.installer-output }}
-        APPLE_API_KEY_PATH: ${{ inputs.apple-api-key-path }}
-        APPLE_API_KEY_ID: ${{ inputs.apple-api-key-id }}
-        APPLE_API_ISSUER_ID: ${{ inputs.apple-api-issuer-id }}
