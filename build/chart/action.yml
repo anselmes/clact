@@ -116,7 +116,7 @@ runs:
       env:
         DIGEST: ${{ steps.push.outputs.digest }}
         REF: ${{ steps.push.outputs.ref }}
-      run: cosign sign --yes "${REF%:*}@${DIGEST}"
+      run: ref="${REF#oci://}"; cosign sign --yes "${ref%:*}@${DIGEST}"
 
     - name: Attest Build Provenance
       uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
