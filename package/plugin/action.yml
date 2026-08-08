@@ -47,25 +47,25 @@ runs:
 
     - name: Validate plugin name
       shell: bash
+      env:
+        NAME: ${{ inputs.name }}
       run: |
         set -euo pipefail
         if [[ ! "${NAME}" =~ ^[A-Za-z0-9._-]+$ ]]; then
           echo "::error::Invalid name '${NAME}' (expected only A-Z, a-z, 0-9, '.', '_' or '-')" >&2
           exit 1
         fi
-      env:
-        NAME: ${{ inputs.name }}
 
     - name: Bump plugin manifest version
       if: inputs.version != ''
       shell: bash
       working-directory: ${{ inputs.context }}
+      env:
+        VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
         jq --arg v "${VERSION}" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json.$$
         mv /tmp/plugin.json.$$ .claude-plugin/plugin.json
-      env:
-        VERSION: ${{ inputs.version }}
 
     - name: Validate plugin manifest
       shell: bash
@@ -76,6 +76,11 @@ runs:
       id: stage
       shell: bash
       working-directory: ${{ inputs.context }}
+      env:
+        DIST_DIR: ${{ inputs.dist-dir }}
+        NAME: ${{ inputs.name }}
+        OUTPUT: ${{ inputs.output }}
+        PATHS: ${{ inputs.paths }}
       run: |
         set -euo pipefail
         OUTPUT="${OUTPUT:-hack/${NAME}.plugin}"
@@ -97,8 +102,3 @@ runs:
 
         echo "plugin-path=${OUTPUT}" >> "$GITHUB_OUTPUT"
         echo "dist-path=${DIST_DIR}/${NAME}" >> "$GITHUB_OUTPUT"
-      env:
-        NAME: ${{ inputs.name }}
-        OUTPUT: ${{ inputs.output }}
-        DIST_DIR: ${{ inputs.dist-dir }}
-        PATHS: ${{ inputs.paths }}

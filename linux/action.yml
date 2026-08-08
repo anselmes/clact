@@ -1,4 +1,4 @@
-# TODO: #30 Linux Build Workflow
+# TODO: Linux Build Workflow
 name: Linux Build Workflow
 description: |
   Build and publish Linux kernel or Ubuntu images using GitHub Actions.
@@ -38,17 +38,17 @@ inputs:
     default: linux
     required: false
 
-# TODO: #23 setup cosign
+# TODO: setup cosign
 runs:
   using: composite
   steps:
     - id: prep
       shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
       run: |
         echo "##[group]Detected target: $TARGET"
         echo "##[endgroup]"
-      env:
-        TARGET: ${{ inputs.target }}
 
     - name: Build kernel
       if: inputs.target == 'kernel'
@@ -68,9 +68,9 @@ runs:
     - name: Publish kernel
       if: inputs.target == 'kernel' && inputs.publish == 'true'
       shell: bash
-      run: echo "Publishing kernel to registry $REGISTRY_URL"
       env:
         REGISTRY_URL: ${{ inputs.registry_url }}
+      run: echo "Publishing kernel to registry $REGISTRY_URL"
 
     - name: Build Ubuntu image
       if: inputs.target == 'ubuntu'
@@ -85,15 +85,15 @@ runs:
     - name: Publish Ubuntu image
       if: inputs.target == 'ubuntu' && inputs.publish == 'true'
       shell: bash
-      run: echo "Publishing Ubuntu image to registry $REGISTRY_URL"
       env:
         REGISTRY_URL: ${{ inputs.registry_url }}
+      run: echo "Publishing Ubuntu image to registry $REGISTRY_URL"
 
     - name: Attest Build Provenance
       uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       with:
+        # subject-path: ${{ inputs.dockerfile }}
         push-to-registry: true
         subject-digest: ${{ steps.build.outputs.digest }}
         subject-name: ${{ steps.build.outputs.metadata.image.name }}
-        # subject-path: ${{ inputs.dockerfile }}

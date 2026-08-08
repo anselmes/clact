@@ -38,8 +38,8 @@ runs:
   steps:
     - shell: bash
       env:
-        INPUT_KEYCHAIN_PATH: ${{ inputs.keychain-path }}
         INPUT_API_KEY_PATH: ${{ inputs.api-key-path }}
+        INPUT_KEYCHAIN_PATH: ${{ inputs.keychain-path }}
         INPUT_PREVIOUS_DEFAULT_KEYCHAIN: ${{ inputs.previous-default-keychain }}
         INPUT_PREVIOUS_KEYCHAINS: ${{ inputs.previous-keychains }}
       run: |

@@ -23,8 +23,8 @@ inputs:
       Lock timeout for the ephemeral keychain, in seconds. Defaults to 21600
       (6 hours) to comfortably cover typical CI job runtimes; raise this for
       longer-running workflows.
-    required: false
     default: "21600"
+    required: false
 
 outputs:
   keychain-path:
@@ -46,9 +46,9 @@ runs:
     - id: setup
       shell: bash
       env:
+        APPLE_API_KEY_P8_BASE64: ${{ inputs.api-key-p8-base64 }}
         APPLE_CERT_P12_BASE64: ${{ inputs.cert-p12-base64 }}
         APPLE_CERT_PASSWORD: ${{ inputs.cert-password }}
-        APPLE_API_KEY_P8_BASE64: ${{ inputs.api-key-p8-base64 }}
         KEYCHAIN_TIMEOUT_SECONDS: ${{ inputs.keychain-timeout-seconds }}
       run: | # zizmor: ignore[github-env]
         set -euo pipefail

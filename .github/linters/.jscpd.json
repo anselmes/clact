@@ -1,13 +1,4 @@
 {
   "threshold": 15,
-  "ignore": [
-    "**/__tests__/**",
-    "**/.github/workflows/**",
-    "**/*.md",
-    "**/*.spec.*",
-    "**/*.test.*",
-    "**/*.txt",
-    "**/dist/**",
-    "**/node_modules/**"
-  ]
+  "ignore": ["**/.github/workflows/**", "**/*.md"]
 }
