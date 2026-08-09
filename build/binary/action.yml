@@ -151,12 +151,24 @@ runs:
       if: inputs.target == 'rust'
       with:
         cache: true
+        # The host toolchain only carries the runner's native target (e.g.
+        # aarch64-apple-darwin on Apple Silicon macOS runners) -- cross-
+        # compiling to the other Apple Silicon/Intel target needs its stdlib
+        # installed explicitly, or rustc fails with "can't find crate for
+        # `std`" (E0463). Native-arch builds (arch unset, or matching the
+        # runner) need nothing extra here.
+        target: ${{ inputs.arch == 'x86_64' && 'x86_64-apple-darwin' || inputs.arch == 'aarch64' && 'aarch64-apple-darwin' || '' }}
 
     - name: Setup Go
       uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
       if: inputs.target == 'go'
       with:
         cache: true
+        # Without an explicit go-version/go-version-file, this action tries
+        # to detect a pre-installed version and fails outright ("Command
+        # failed:  version") rather than falling back to autodetection from
+        # the caller's own go.mod.
+        go-version-file: ${{ inputs.context }}/go.mod
 
     - name: Read plugin version
       id: version
