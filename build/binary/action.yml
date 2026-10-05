@@ -147,7 +147,7 @@ runs:
         swift-version: ${{ inputs['swift-version'] || 'latest' }}
 
     - name: Setup Rust
-      uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1.13.0
+      uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
       if: inputs.target == 'rust'
       with:
         cache: true
@@ -160,7 +160,7 @@ runs:
         target: ${{ inputs.arch == 'x86_64' && 'x86_64-apple-darwin' || inputs.arch == 'aarch64' && 'aarch64-apple-darwin' || '' }}
 
     - name: Setup Go
-      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       if: inputs.target == 'go'
       with:
         cache: true
